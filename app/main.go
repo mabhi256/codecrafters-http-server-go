@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"net"
@@ -223,10 +225,28 @@ func (req *HTTPRequest) RouteRequest() *HTTPResponse {
 
 func handleEcho(encodings, pathParam string) *HTTPResponse {
 	if strings.Contains(encodings, "gzip") {
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		_, err := gz.Write([]byte(pathParam))
+		if err != nil {
+			return &HTTPResponse{
+				Status:  StatusInternalServerError,
+				Headers: make(map[string]string),
+			}
+		}
+
+		err = gz.Close()
+		if err != nil {
+			return &HTTPResponse{
+				Status:  StatusInternalServerError,
+				Headers: make(map[string]string),
+			}
+		}
+
 		return &HTTPResponse{
 			Status:  StatusOK,
 			Headers: map[string]string{"content-type": "text/plain", "content-encoding": "gzip"},
-			Body:    pathParam,
+			Body:    buf.String(),
 		}
 	} else {
 		return &HTTPResponse{
