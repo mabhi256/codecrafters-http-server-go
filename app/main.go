@@ -110,22 +110,22 @@ func handleRequest(c net.Conn) {
 			return
 		}
 
-		// // Check if client wants to close connection
-		// connectionHeader := strings.ToLower(req.Headers["connection"])
-		// shouldClose := connectionHeader == "close"
+		// Check if client wants to close connection
+		connectionHeader := strings.ToLower(req.Headers["connection"])
+		shouldClose := connectionHeader == "close"
 
 		response := req.RouteRequest()
-		// if shouldClose {
-		// 	response.Headers["connection"] = "close"
-		// } else {
-		// 	response.Headers["connection"] = "keep-alive"
-		// }
+		if shouldClose {
+			response.Headers["connection"] = "close"
+		} else {
+			response.Headers["connection"] = "keep-alive"
+		}
 
 		sendResponse(c, response)
 
-		// if shouldClose {
-		// 	return
-		// }
+		if shouldClose {
+			return
+		}
 	}
 
 }
