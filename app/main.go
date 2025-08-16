@@ -194,11 +194,11 @@ func (req *HTTPRequest) RouteRequest() *HTTPResponse {
 		}
 
 	case req.Method == HTTPGet && endpoint == "echo" && len(pathParts) == 2:
-		return &HTTPResponse{
-			Status:  StatusOK,
-			Headers: map[string]string{"content-type": "text/plain"},
-			Body:    pathParam,
+		encoding, exists := req.Headers["accept-encoding"]
+		if !exists {
+			encoding = ""
 		}
+		return handleEcho(encoding, pathParam)
 
 	case req.Method == HTTPGet && endpoint == "user-agent" && len(pathParts) == 1:
 		return &HTTPResponse{
@@ -217,6 +217,24 @@ func (req *HTTPRequest) RouteRequest() *HTTPResponse {
 		return &HTTPResponse{
 			Status:  StatusNotFound,
 			Headers: make(map[string]string),
+		}
+	}
+}
+
+func handleEcho(encoding, pathParam string) *HTTPResponse {
+	switch encoding {
+	case "gzip":
+		return &HTTPResponse{
+			Status:  StatusOK,
+			Headers: map[string]string{"content-type": "text/plain", "content-encoding": "gzip"},
+			Body:    pathParam,
+		}
+
+	default:
+		return &HTTPResponse{
+			Status:  StatusOK,
+			Headers: map[string]string{"content-type": "text/plain"},
+			Body:    pathParam,
 		}
 	}
 }
