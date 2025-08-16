@@ -194,11 +194,11 @@ func (req *HTTPRequest) RouteRequest() *HTTPResponse {
 		}
 
 	case req.Method == HTTPGet && endpoint == "echo" && len(pathParts) == 2:
-		encoding, exists := req.Headers["accept-encoding"]
+		encodings, exists := req.Headers["accept-encoding"]
 		if !exists {
-			encoding = ""
+			encodings = ""
 		}
-		return handleEcho(encoding, pathParam)
+		return handleEcho(encodings, pathParam)
 
 	case req.Method == HTTPGet && endpoint == "user-agent" && len(pathParts) == 1:
 		return &HTTPResponse{
@@ -221,16 +221,14 @@ func (req *HTTPRequest) RouteRequest() *HTTPResponse {
 	}
 }
 
-func handleEcho(encoding, pathParam string) *HTTPResponse {
-	switch encoding {
-	case "gzip":
+func handleEcho(encodings, pathParam string) *HTTPResponse {
+	if strings.Contains(encodings, "gzip") {
 		return &HTTPResponse{
 			Status:  StatusOK,
 			Headers: map[string]string{"content-type": "text/plain", "content-encoding": "gzip"},
 			Body:    pathParam,
 		}
-
-	default:
+	} else {
 		return &HTTPResponse{
 			Status:  StatusOK,
 			Headers: map[string]string{"content-type": "text/plain"},
