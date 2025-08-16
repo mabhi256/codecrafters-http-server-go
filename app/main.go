@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strconv"
@@ -185,29 +184,21 @@ func (req *HTTPRequest) RouteRequest() *HTTPResponse {
 }
 
 func handleFileRequest(fileName string) *HTTPResponse {
-	fileInfo, err := os.Stat("/tmp/" + fileName)
+	// Read the directory argument used for ./your_program.sh
+	args := os.Args
+	if len(args) < 2 {
+		return &HTTPResponse{
+			Status:  StatusInternalServerError,
+			Headers: make(map[string]string),
+		}
+	}
+	directory := args[2]
+
+	// Read the whole file and close
+	content, err := os.ReadFile(directory + fileName)
 	if err != nil {
 		return &HTTPResponse{
 			Status:  StatusNotFound,
-			Headers: make(map[string]string),
-		}
-	}
-
-	fileInfo.Size()
-
-	file, err := os.Open("/tmp/" + fileName)
-	if err != nil {
-		return &HTTPResponse{
-			Status:  StatusForbidden,
-			Headers: make(map[string]string),
-		}
-	}
-	defer file.Close()
-
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return &HTTPResponse{
-			Status:  StatusForbidden,
 			Headers: make(map[string]string),
 		}
 	}
