@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -12,11 +13,21 @@ import (
 const CRLF = "\r\n"
 
 type HTTPRequest struct {
-	Method   string
+	Method   HTTPMethod
 	Path     string
 	Protocol string // Is usually HTTP/1.1, but keep it for the sake of completeness
 	Headers  map[string]string
+	Body     []byte
 }
+
+type HTTPMethod string
+
+const (
+	HTTPGet    HTTPMethod = "GET"
+	HTTPPost   HTTPMethod = "POST"
+	HTTPPut    HTTPMethod = "PUT"
+	HTTPDelete HTTPMethod = "DELETE"
+)
 
 type HTTPResponse struct {
 	Status  HTTPStatus
@@ -27,8 +38,8 @@ type HTTPResponse struct {
 type HTTPStatus int
 
 const (
-	StatusOK HTTPStatus = 200
-	// StatusCreated   HTTPStatus = 201
+	StatusOK      HTTPStatus = 200
+	StatusCreated HTTPStatus = 201
 	// StatusAccepted  HTTPStatus = 202
 	// StatusNoContent HTTPStatus = 204
 
@@ -44,6 +55,8 @@ func (s HTTPStatus) String() string {
 	switch s {
 	case StatusOK:
 		return "200 OK"
+	case StatusCreated:
+		return "201 Created"
 	case StatusBadRequest:
 		return "400 Bad Request"
 	case StatusForbidden:
@@ -80,6 +93,7 @@ func handleRequest(c net.Conn) {
 	defer c.Close()
 
 	req, err := parseRequest(c)
+
 	if err != nil {
 		response := &HTTPResponse{
 			Status:  StatusBadRequest,
@@ -110,7 +124,7 @@ func parseRequest(conn net.Conn) (*HTTPRequest, error) {
 	}
 
 	request := &HTTPRequest{
-		Method:   parts[0],
+		Method:   HTTPMethod(parts[0]),
 		Path:     parts[1],
 		Protocol: parts[2],
 		Headers:  make(map[string]string),
@@ -130,6 +144,17 @@ func parseRequest(conn net.Conn) (*HTTPRequest, error) {
 			value := strings.TrimSpace(headerParts[1])
 			request.Headers[key] = value
 		}
+	}
+
+	// Read request body
+	contentLength, _ := strconv.Atoi(request.Headers["content-length"])
+	if contentLength > 0 {
+		bodyBytes := make([]byte, contentLength)
+		_, err := io.ReadFull(reader, bodyBytes)
+		if err != nil {
+			return nil, err
+		}
+		request.Body = bodyBytes
 	}
 
 	return request, nil
@@ -154,27 +179,40 @@ func sendResponse(conn net.Conn, res *HTTPResponse) {
 func (req *HTTPRequest) RouteRequest() *HTTPResponse {
 	path := strings.Trim(req.Path, "/") // Remove leading and trailing '/'
 	pathParts := strings.Split(path, "/")
+	endpoint := pathParts[0]
+
+	var pathParam string
+	if len(pathParts) >= 2 {
+		pathParam = pathParts[1]
+	}
 
 	switch {
-	case req.Path == "/":
+	case req.Method == HTTPGet && req.Path == "/":
 		return &HTTPResponse{
 			Status:  StatusOK,
 			Headers: make(map[string]string),
 		}
-	case pathParts[0] == "echo" && len(pathParts) == 2:
+
+	case req.Method == HTTPGet && endpoint == "echo" && len(pathParts) == 2:
 		return &HTTPResponse{
 			Status:  StatusOK,
 			Headers: map[string]string{"content-type": "text/plain"},
-			Body:    pathParts[1],
+			Body:    pathParam,
 		}
-	case pathParts[0] == "user-agent" && len(pathParts) == 1:
+
+	case req.Method == HTTPGet && endpoint == "user-agent" && len(pathParts) == 1:
 		return &HTTPResponse{
 			Status:  StatusOK,
 			Headers: map[string]string{"content-type": "text/plain"},
 			Body:    req.Headers["user-agent"],
 		}
-	case pathParts[0] == "files" && len(pathParts) == 2:
-		return handleFileRequest(pathParts[1])
+
+	case req.Method == HTTPGet && endpoint == "files" && len(pathParts) == 2:
+		return handleFileGet(pathParam)
+
+	case req.Method == HTTPPost && endpoint == "files" && len(pathParts) == 2:
+		return handleFilePost(pathParam, req.Body)
+
 	default:
 		return &HTTPResponse{
 			Status:  StatusNotFound,
@@ -183,16 +221,20 @@ func (req *HTTPRequest) RouteRequest() *HTTPResponse {
 	}
 }
 
-func handleFileRequest(fileName string) *HTTPResponse {
+func getDirectory() (string, error) {
 	// Read the directory argument used for ./your_program.sh
 	args := os.Args
 	if len(args) < 2 {
-		return &HTTPResponse{
-			Status:  StatusInternalServerError,
-			Headers: make(map[string]string),
-		}
+		return "", fmt.Errorf("unable to locate directory")
 	}
-	directory := args[2]
+	return args[2], nil
+}
+
+func handleFileGet(fileName string) *HTTPResponse {
+	directory, err := getDirectory()
+	if err != nil {
+		directory = "/tmp/"
+	}
 
 	// Read the whole file and close
 	content, err := os.ReadFile(directory + fileName)
@@ -207,5 +249,25 @@ func handleFileRequest(fileName string) *HTTPResponse {
 		Status:  StatusOK,
 		Headers: map[string]string{"content-type": "application/octet-stream"},
 		Body:    string(content),
+	}
+}
+
+func handleFilePost(filename string, body []byte) *HTTPResponse {
+	directory, err := getDirectory()
+	if err != nil {
+		directory = "/tmp/"
+	}
+
+	writeError := os.WriteFile(directory+filename, body, 0644)
+	if writeError != nil {
+		return &HTTPResponse{
+			Status:  StatusInternalServerError,
+			Headers: make(map[string]string),
+		}
+	}
+
+	return &HTTPResponse{
+		Status:  StatusCreated,
+		Headers: make(map[string]string),
 	}
 }
