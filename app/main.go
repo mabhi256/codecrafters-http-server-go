@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -34,8 +35,8 @@ const (
 
 	StatusBadRequest HTTPStatus = 400
 	// StatusUnauthorized HTTPStatus = 401
-	// StatusForbidden    HTTPStatus = 403
-	StatusNotFound HTTPStatus = 404
+	StatusForbidden HTTPStatus = 403
+	StatusNotFound  HTTPStatus = 404
 
 	StatusInternalServerError HTTPStatus = 500
 )
@@ -46,6 +47,8 @@ func (s HTTPStatus) String() string {
 		return "200 OK"
 	case StatusBadRequest:
 		return "400 Bad Request"
+	case StatusForbidden:
+		return "403 Forbidden"
 	case StatusNotFound:
 		return "404 Not Found"
 	case StatusInternalServerError:
@@ -171,10 +174,47 @@ func (req *HTTPRequest) RouteRequest() *HTTPResponse {
 			Headers: map[string]string{"content-type": "text/plain"},
 			Body:    req.Headers["user-agent"],
 		}
+	case pathParts[0] == "files" && len(pathParts) == 2:
+		return handleFileRequest(pathParts[1])
 	default:
 		return &HTTPResponse{
 			Status:  StatusNotFound,
 			Headers: make(map[string]string),
 		}
+	}
+}
+
+func handleFileRequest(fileName string) *HTTPResponse {
+	fileInfo, err := os.Stat("/tmp/" + fileName)
+	if err != nil {
+		return &HTTPResponse{
+			Status:  StatusNotFound,
+			Headers: make(map[string]string),
+		}
+	}
+
+	fileInfo.Size()
+
+	file, err := os.Open("/tmp/" + fileName)
+	if err != nil {
+		return &HTTPResponse{
+			Status:  StatusForbidden,
+			Headers: make(map[string]string),
+		}
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return &HTTPResponse{
+			Status:  StatusForbidden,
+			Headers: make(map[string]string),
+		}
+	}
+
+	return &HTTPResponse{
+		Status:  StatusOK,
+		Headers: map[string]string{"content-type": "application/octet-stream"},
+		Body:    string(content),
 	}
 }
