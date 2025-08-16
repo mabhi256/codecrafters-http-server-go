@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const CRLF = "\r\n"
@@ -94,20 +95,39 @@ func main() {
 func handleRequest(c net.Conn) {
 	defer c.Close()
 
-	req, err := parseRequest(c)
+	for {
+		c.SetReadDeadline(time.Now().Add(30 * time.Second))
 
-	if err != nil {
-		response := &HTTPResponse{
-			Status:  StatusBadRequest,
-			Headers: make(map[string]string),
+		req, err := parseRequest(c)
+
+		if err != nil {
+			response := &HTTPResponse{
+				Status:  StatusBadRequest,
+				Headers: make(map[string]string),
+			}
+
+			sendResponse(c, response)
+			return
 		}
 
+		// // Check if client wants to close connection
+		// connectionHeader := strings.ToLower(req.Headers["connection"])
+		// shouldClose := connectionHeader == "close"
+
+		response := req.RouteRequest()
+		// if shouldClose {
+		// 	response.Headers["connection"] = "close"
+		// } else {
+		// 	response.Headers["connection"] = "keep-alive"
+		// }
+
 		sendResponse(c, response)
-		return
+
+		// if shouldClose {
+		// 	return
+		// }
 	}
 
-	response := req.RouteRequest()
-	sendResponse(c, response)
 }
 
 func parseRequest(conn net.Conn) (*HTTPRequest, error) {
@@ -235,6 +255,7 @@ func handleEcho(encodings, pathParam string) *HTTPResponse {
 			}
 		}
 
+		// Close the gzip writer to finalize the stream
 		err = gz.Close()
 		if err != nil {
 			return &HTTPResponse{
